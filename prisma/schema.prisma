@@ -1,0 +1,37 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  uid            Int     @id @unique @default(autoincrement())
+  email          String  @unique
+  fname          String
+  lname          String?
+  password String @db.VarChar(60)
+  privilegeLevel Int
+  refreshToken String? @db.Text
+
+  Shipments Shipments[]
+}
+
+model Shipments {
+  sid               Int      @id @unique @default(autoincrement())
+  sender            User     @relation(fields: [senderUid], references: [uid])
+  senderUid         Int
+  recipient_name    String
+  recipient_address String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  status            String
+}

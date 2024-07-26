@@ -1,0 +1,37 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Production build
+/build
+/dist
+
+# Prisma
+/prisma/*.db
+/prisma/migrations
+
+# Environment variables
+.env
+
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# TypeScript
+*.tsbuildinfo
+
+# Temporary files
+*.log
+*.tmp
+*.temp
+
+# Compiled output
+*.js
+*.js.map
+*.d.ts
+
+# Except for configuration files
+!*.config.js
+!jest.config.js
