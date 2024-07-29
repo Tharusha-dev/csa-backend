@@ -11,8 +11,6 @@
 /prisma/*.db
 /prisma/migrations
 
-# Environment variables
-.env
 
 
 # OS generated files

@@ -21,7 +21,7 @@ const PORT = process.env.PORT || 5000;
 
 app.use(express.json());
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
   credentials: true,
 }))
 
@@ -385,18 +385,20 @@ app.get("/api/all-shipments", verify, async (req: any, res) => {
  
 app.post("/api/verify", verify, (req, res) => {
 
-  //this is a special endpoint that gets called when user visits / on client. if refresh token exsists 
+  //this is a special endpoint that gets called when user visits / , /login or /signup on client. if refresh token exsists 
   //on users cookie that means he is a logged in user. If so the ref:1 on /auth/auth.ts will pass and status 200 will 
   //be sent with a new access token, client will then understand this and redirect to /dashboard
 
   //If the user does not have a refresh token cookie that mean user has not signed in, ref:1 on /auth/auth.ts will fail
-  //and status 403 will be sent (ref:2 on /auth/auth.ts). Client wil then understand this and redirect user to /login
+  //and status 403 will be sent (ref:2 on /auth/auth.ts). Client wil then understand this and redirect user to /login or /singup (based on where the req came from)
 
   if (!res.headersSent) {
     res.send(200)
   }
 
 })
+
+
 
 app.listen(PORT, () => {
 

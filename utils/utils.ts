@@ -9,7 +9,7 @@ export function generateAccessToken(user: User) {
 
 export function generateRefreshToken(uid: number, privilegeLevel: number) {
   return jwt.sign({ uid, privilegeLevel }, "myRefreshSecretKey",{
-    expiresIn: "3dd", // while refresh token are meant to last longer. This means every user MUST re-login once every 30 days.
+    expiresIn: "30d", // while refresh token are meant to last longer. This means every user MUST re-login once every 30 days.
   });
 };
 
