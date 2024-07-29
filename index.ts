@@ -21,102 +21,112 @@ const PORT = process.env.PORT || 5000;
 
 app.use(express.json());
 app.use(cors({
-  origin: 'http://localhost:3000', // Allow only your React app's origin
+  origin: 'http://localhost:3000',
   credentials: true,
 }))
 
+// see comments on auth/auth.ts to understand verify middlewheres logic
 
 
-let refreshTokens: String[] = [];
 
-app.post("/api/refresh", (req, res) => {
-  //take the refresh token from the user
-  const refreshToken = req.body.token;
-
-  //send error if there is no token or it's invalid
-  if (!refreshToken) return res.status(401).json("You are not authenticated!");
-  if (!refreshTokens.includes(refreshToken)) {
-    return res.status(403).json("Refresh token is not valid!");
-  }
-  jwt.verify(refreshToken, "myRefreshSecretKey", (err: any, user: any) => {
-    err && console.log(err);
-    refreshTokens = refreshTokens.filter((token) => token !== refreshToken);
-
-    const newAccessToken = generateAccessToken(user);
-    const newRefreshToken = generateRefreshToken(user.uid, user.privilegeLevel);
-
-    refreshTokens.push(newRefreshToken);
-
-    res.status(200).json({
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-    });
-  });
-
-  //if everything is ok, create new access token, refresh token and send to user
-});
 
 app.post("/api/admin/modify-shipment/", verify, async (req, res) => {
-  const { user, sid, status } = req.body
-  console.log("got to mod")
-  console.log(req.body)
- 
+
+  
+
+  const { user, sid, status,accessToken } = req.body
+
+  if (user.privilegeLevel > 0) { //checking if admin user
     try {
       await prisma.shipments.update({
         where: { sid: sid },
         data: { status: status }
+      }).then((e) => {
+        res.status(200).send({
+          "message":"Changes applied",
+        accessToken})
       })
     } catch (err) {
       res.send(403).json(err)
     }
 
-  
+
+
+  }
+}
+)
+
+app.get("/api/admin/all-shipments", verify, async (req, res) => {
+  const { user } = req.body
+
+  if (user.privilegeLevel > 0) { //checking if admin user
+    try {
+
+      const shipments = await prisma.shipments.findMany({
+        include: {
+          sender: {
+            select: {
+              fname: true,
+              lname: true,
+              address: true,
+            },
+          },
+        },
+
+      })
+      let accessToken = req.body.accessToken
+
+      res.status(200).json({
+        accessToken,
+        shipments
+      })
+
+    } catch (err) {
+      console.log(err)
+    }
+  }
 
 })
 
-app.get("/api/admin/all-shipments", verify, async (req, res) => {
-  // console.log("got")
-  // const { user } = req.body
+app.post("/api/admin/shipping-details", verify, async (req: any, res) => { //special admin route admin can change all shippings
 
-  // if (user.privilegeLevel > 0) {
-  //   try {
-  //     let accessToken = req.body.accessToken
-  //     const shipments = await prisma.shipments.findMany()
-  //     console.log(shipments)
+  const { user, sid, accessToken } = req.body
 
-  //     res.send(200).json({shipments,accessToken})
-  //   } catch (err) {
-  //    console.log(err)
-  //   }
-
-  // }else {
-  //   res.send(403).json("Your not allowd to performe this action")
-  // }
-
-
-  try {
-    const shipments = await prisma.shipments.findMany({
-     
-
-    })
-    let accessToken = req.body.accessToken
-
-    res.status(200).json({
-      accessToken,
-      shipments
-    })
-
-  } catch (err) {
-    console.log(err)
+  if(user.privilegeLevel > 0) { //admin user check
+    try {
+  
+      const shipment = await prisma.shipments.findUnique({
+        where: {
+          sid: sid,
+        },
+        include: {
+          sender: {
+            select: {
+              fname: true,
+              lname: true,
+              address: true,
+            },
+          },
+        },
+      });
+  
+      res.status(200).json({ shipment, accessToken })
+    } catch (err) {
+  
+      res.status(400).json(err)
+    }
   }
+
+
 })
 
 
 
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
+  console.log(req.body)
 
-  let user: User | null
+  let user: User | null //if user is null, user does not exsist in db
 
 
   try {
@@ -127,10 +137,11 @@ app.post("/api/login", async (req, res) => {
 
     if (user) {
       if (await bcrypt.compare(password, user.password)) {
+        console.log("correct")
         console.log(password)
         console.log(user.password)
 
-        //Generate an access token
+        //Generate an access token & refresh token
         const accessToken = generateAccessToken(user);
         const refreshToken = generateRefreshToken(user.uid, user.privilegeLevel);
 
@@ -142,10 +153,10 @@ app.post("/api/login", async (req, res) => {
         } catch (err) {
           res.status(500).json(err)
         }
-        // Set refresh token as HttpOnly cookie
+        // Set refresh token as HttpOnly cookie, (only accesible via requests)
         res.cookie('refreshToken', refreshToken, {
           httpOnly: true,
-          secure: true, // Use secure in production
+          secure: true,
           sameSite: 'strict',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
@@ -159,6 +170,8 @@ app.post("/api/login", async (req, res) => {
 
         });
       } else {
+        console.log("in-correct")
+
         console.log(password)
         console.log(user.password)
         res.status(400).json("Username or password incorrect!");
@@ -176,9 +189,55 @@ app.post("/api/login", async (req, res) => {
 
 });
 
+app.post("/api/profile-info", verify, async (req, res) => {
+  const { user, accessToken } = req.body
+
+
+  try {
+    const userInfo = await prisma.user.findUnique({
+      where: {
+        uid: user.uid
+      }
+
+    })
+    // prisma does not a have built-in way to exclude a field yet! https://github.com/prisma/prisma/issues/5042 
+    // instead password is obfuscate before sendning to client
+
+    userInfo!.password = "_"
+
+    res.status(200).json({
+      userInfo,
+      accessToken
+    })
+  } catch (err) {
+    res.status(400).json(err)
+  }
+
+})
+
+app.post("/api/change-address", verify, async (req, res) => {
+  const { user, address,accessToken } = req.body
+  try {
+    await prisma.user.update({
+      where: { uid: user.uid },
+      data: { address: address }
+    }).then((e) => {
+      res.status(200).json({
+        
+        "message" : "Changes saved",
+      accessToken})
+    })
+
+
+  } catch (err) {
+    res.status(400).json(err)
+
+  }
+})
+
 
 app.post("/api/signup", async (req, res) => {
-  const { firstName, lastName, username, password } = req.body;
+  const { firstName, lastName, username, password, address } = req.body;
 
   // Generate a salt
   const salt = await bcrypt.genSalt(10);
@@ -198,12 +257,15 @@ app.post("/api/signup", async (req, res) => {
         lname: lastName,
         password: hashedPassword,
         privilegeLevel: 0,
+        address: address
+
 
 
 
       }
     }).then((e) => {
-      res.status(200).json("New user created")
+      console.log(hashedPassword)
+      res.status(200).json("New user created " + hashedPassword)
 
     })
   } catch (err) {
@@ -214,34 +276,19 @@ app.post("/api/signup", async (req, res) => {
 })
 
 
-app.delete("/api/users/:userId", verify, (req: any, res) => {
-  if (req.user.uid === req.params.userId || req.user.isAdmin) {
-    res.status(200).json("User has been deleted.");
-  } else {
 
-    res.status(403).json(req.user);
-  }
-});
 
 app.post("/api/logout", (req, res) => {
 
-  //TODO : REMOVE COOKIE FROM DB
-
-
-  res.clearCookie("refreshToken")
+  res.clearCookie("refreshToken") //so that the next time verify middlewhere gets called ref:1 in /auth/auth.ts will fail.
   res.status(200).json("You logged out successfully.");
 });
 
-app.post("/api/verify", verify, (req, res) => {
-  if (!res.headersSent) {
-    res.send(200)
-  }
 
-})
 
 app.post("/api/new-shipment", verify, async (req: any, res) => {
 
-  const { user, recipient_name, recipient_address } = req.body
+  const { user, recipient_name, recipient_address , accessToken} = req.body
 
 
   try {
@@ -261,14 +308,16 @@ app.post("/api/new-shipment", verify, async (req: any, res) => {
           senderUid: sender!.uid,
           recipient_name: recipient_name,
           recipient_address: recipient_address,
-          status: "pending",
+          status: "Pending",
 
 
 
         }
       }).then((e) => {
-        res.status(200).json("New shipment created")
-
+        res.status(200).json({
+          "message" :"New shipment created",
+        accessToken})
+          
       })
     } catch (err) {
       console.log(err)
@@ -280,25 +329,31 @@ app.post("/api/new-shipment", verify, async (req: any, res) => {
 
 })
 
-app.post("/api/shipping-details",verify, async (req: any, res) => {
-  const {user,sid} = req.body
+app.post("/api/shipping-details", verify, async (req: any, res) => {
+
+  const { user, sid, accessToken } = req.body
+
   try {
-    const shipment = await prisma.shipments.findUnique({
-      //@ts-ignore
+    const shipment = await prisma.shipments.findFirst({
+
       where: {
         AND: [
-          { sid:sid},
+          { sid: sid },
           { senderUid: user.uid }
         ]
       }
-      
+
     })
 
-    res.status(200).json(shipment)
-  }catch(err){
+    res.status(200).json({ shipment, accessToken })
+  } catch (err) {
+
     res.status(400).json(err)
   }
-} )
+})
+
+
+
 
 
 
@@ -327,8 +382,21 @@ app.get("/api/all-shipments", verify, async (req: any, res) => {
 
 
 })
+ 
+app.post("/api/verify", verify, (req, res) => {
 
+  //this is a special endpoint that gets called when user visits / on client. if refresh token exsists 
+  //on users cookie that means he is a logged in user. If so the ref:1 on /auth/auth.ts will pass and status 200 will 
+  //be sent with a new access token, client will then understand this and redirect to /dashboard
 
+  //If the user does not have a refresh token cookie that mean user has not signed in, ref:1 on /auth/auth.ts will fail
+  //and status 403 will be sent (ref:2 on /auth/auth.ts). Client wil then understand this and redirect user to /login
+
+  if (!res.headersSent) {
+    res.send(200)
+  }
+
+})
 
 app.listen(PORT, () => {
 
